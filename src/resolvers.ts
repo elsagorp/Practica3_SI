@@ -7,16 +7,15 @@ const checkDateValidity = (
   month: string,
   year: string
 ): boolean => {
+  const date1 = new Date();
+  const day1 = date1.getDate();
+  const month1 = date1.getMonth() + 1;
+  const year1 = date1.getFullYear();
+  const date2 = new Date(`${month1} ${day1}, ${year1}`);
   const date = new Date(`${month} ${day}, ${year}`);
-  return date.toString() !== "Invalid Date";
+  return date2 <= date;
 };
-/*
-const checkAuth = (
-    auth_token: string
-  ): boolean => {
-    const char = await db.collection("Usuarios").findOne({ auth_token});
-    return date.toString() !== "Invalid Date";
-  };*/
+
 
 export const status = async (req: Request, res: Response) => {
   const date = new Date();
@@ -42,11 +41,11 @@ export const freeSeats = async (req: Request, res: Response) => {
   };
 
   if (!day || !month || !year) {
-    return res.status(500).send("Missing day, month or year");
+    return res.status(500).send("Falta día, mes o año");
   }
 
   if (!checkDateValidity(day, month, year)) {
-    return res.status(500).send("Invalid day, month or year");
+    return res.status(500).send("Invalido día, mes o año");
   }
 
   const seats = await collection.find({ day, month, year }).toArray();
@@ -64,7 +63,7 @@ export const book = async (req: Request, res: Response) => {
   const db: Db = req.app.get("db");
   const collection = db.collection("Reservas");
   if (!req.query) {
-    return res.status(500).send("No params");
+    return res.status(500).send("No hay parametros");
   }
 
   const { day, month, year, number } = req.query as {
@@ -75,56 +74,60 @@ export const book = async (req: Request, res: Response) => {
   };
 
   if (!day || !month || !year || !number) {
-    return res.status(500).send("Missing day, month or year or seat number");
+    return res.status(500).send("Falta dia,  mes, año o número de sitio");
   }
 
   if (!checkDateValidity(day, month, year)) {
-    return res.status(500).send("Invalid day, month or year");
+    return res.status(500).send("Invalido día, mes o año");
   }
 
   const notFree = await collection.findOne({ day, month, year, number });
   if (notFree) {
-    return res.status(500).send("Seat is not free");
+    return res.status(404).send("Sitio no disponible");
   }
 
-  const token = uuid();
-  await collection.insertOne({ day, month, year, number, token });
+ const us = db.collection("Usuarios").findOne({auth_token: req.header('auth_token')})
+ if(us){
+  await collection.insertOne({ day, month, year, number, user: us });
 
-  return res.status(200).json({ token });
+  return res.status(200).json( {seat:number ,date: day,month,year});
+ }else{
+
+ }
 };
 
 export const free = async (req: Request, res: Response) => {
   const db: Db = req.app.get("db");
   const collection = db.collection("Reservas");
   if (!req.query) {
-    return res.status(500).send("No params");
+    return res.status(500).send("No hay parametros");
   }
 
-  const { day, month, year } = req.query as {
+  const { day, month, year } = req.body as {
     day: string;
     month: string;
     year: string;
   };
 
-  const token = req.headers.token;
 
-  if (!day || !month || !year || !token) {
+
+  if (!day || !month || !year) {
     return res
       .status(500)
-      .send("Missing day, month or year or seat number or token");
+      .send("Falta dia,  mes, año o número de sitio ");
   }
 
   if (!checkDateValidity(day, month, year)) {
-    return res.status(500).send("Invalid day, month or year");
+    return res.status(500).send("Dia, mes o año invalidos");
   }
-
-  const booked = await collection.findOne({ day, month, year, token });
+  const us = db.collection("Usuarios").findOne({auth_token: req.header('auth_token')})
+  const booked = await collection.findOne({ day, month, year, us });
   if (booked) {
-    await collection.deleteOne({ day, month, year, token });
-    return res.status(200).send("Seat is now free");
+    await collection.deleteOne({ day, month, year, us });
+    return res.status(200).send("Sitio liberado");
   }
 
-  return res.status(500).send("Seat is not booked");
+  return res.status(404).send("Sitio no reservado con mi usuario");
 };
 
 
@@ -133,9 +136,20 @@ export const free = async (req: Request, res: Response) => {
 
 
 export const mybookings = async (req: Request, res: Response) => {
-  const db: Db = req.app.get("db");
-  const char = await db.collection("Usuarios").findOne({ auth_token: req.body.auth_token});
+  const date = new Date();
+  const day1 = date.getDate();
+  const month1 = date.getMonth() + 1;
+  const year1 = date.getFullYear();
 
+  const db: Db = req.app.get("db");
+  const char = await db.collection("Usuarios").findOne({ auth_token: req.headers.auth_token});
+
+  const reser = await db.collection("Reservas").find({day:{$gte: day1},month:{$gte: month1},year:{$gte: year1}, user: char}).toArray();
+  if(reser){
+    res.status(200).json({reservas:reser});
+  }else {
+    res.status(404).json("No hay reservas futuras con tú usuario");
+  }
 }
 
 
@@ -152,16 +166,12 @@ export const login = async (req: Request, res: Response) => {
  
         const token = uuid();
          db.collection("Usuarios").updateOne(
-            { email: req.query.email, password: req.query.password},
+            { email: email, password: password},
             { $set: { auth_token: token } }
         );
-       // req.header.auth_token = token;
         res.status(200).send({auth_token: token});
       
-        /*.send({
-         mensaje: 'Autenticación correcta',
-         token: token
-        });*/
+
     } else {
               res.status(404).json({ mensaje: "Usuario o contraseña incorrectos"})
           }
@@ -186,15 +196,16 @@ export const signin = async (req: Request, res: Response) => {
 }
 
 export const logout = async (req: Request, res: Response) => {
-    
+  const token = req.headers.auth_token;
+ 
     const db: Db = req.app.get("db");
 
-    if(req.query.token != undefined){
+    if(token){
        await db.collection("Usuarios").updateOne(
-            { email: req.query.email, password: req.query.password},
+            { auth_token: token},
             { $set: { auth_token: undefined } }
         );
-        res.status(200).header('auth_token', undefined).json({mensaje: 'Se cerro sesión'});
+        res.status(200).json({mensaje: 'Se cerro sesión'});
     }else{
       res.status(500).json({ mensaje: "No se pudo cerrar sesión"});
     }

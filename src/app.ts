@@ -15,18 +15,19 @@ const run = async () => {
   
   
   
-  //app.use(bodyParser);
-  app.use(express.json());
+  app.use(bodyParser.json());
+  app.use(bodyParser.urlencoded({extended: true}));
+  //app.use(express.text());
  
 
-  /*
+  
   app.use(["/logout","/freeSeats","/free","/book","/mybookings"], async(req, res, next) => {
 
     //comprobamos que el token y usuario que se mete existe en la base de datos si es asi next
-    //falta escribirlo
+
     const token = req.header('auth_token');
     if(token != undefined ){
-      const char = await db.collection("Usuarios").findOne({ token: token});
+      const char = await db.collection("Usuarios").findOne({ auth_token: token});
       if(char) next();
       else{
         res.status(403).send("Tienes que iniciar sesion primero");
@@ -35,12 +36,11 @@ const run = async () => {
         res.status(403).send("Tienes que iniciar sesion primero");
    }
   });
-  */
+  
   app.get("/status", status);
   app.post("/signin", signin);
   app.post("/login", login);
   app.post("/logout", logout);
-
 
 
  
